@@ -18,6 +18,7 @@ package raft
 //
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -59,7 +60,7 @@ type Raft struct {
 	dead         int32 // set by Kill()
 
 	// leader
-	followerCount int
+	voteCount int
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -196,6 +197,36 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 //
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if ok {
+		// 如果发送成功，处理reply
+		// 1. request 异常情况,term / status
+		if rf.serverStatus != CANDIDATE || rf.currentTerm != args.Term {
+			log.Printf("[%v] sendRequestVote request invilid\n", rf.me)
+			return ok
+		}
+
+		// 2. response invilid
+		if rf.currentTerm < reply.Term {
+			rf.serverStatus = FOLLOWER
+			rf.currentTerm = reply.Term
+			rf.votedFor = -1
+			log.Printf("[%v] sendRequestVote response invilid\n", rf.me)
+			return ok
+		}
+
+		// 3. voted
+		if reply.VoteGranted {
+			rf.voteCount++
+			// upToLeader
+			if rf.voteCount > len(rf.peers)/2 {
+				rf.serverStatus = LEADER
+				rf.chanWinElect <- true
+				log.Printf("[%v] sendRequestVote, up to leader.", rf.me)
+			}
+		}
+	}
 	return ok
 }
 

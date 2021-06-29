@@ -40,7 +40,7 @@ func (rf *Raft) RunServer() {
 			rf.mu.Lock()
 			rf.currentTerm++
 			rf.votedFor = rf.me
-			rf.followerCount = 1
+			rf.voteCount = 1 // vote itself
 			rf.mu.Unlock()
 			log.Printf("%v become CANDIDATE %v\n", rf.me, rf.currentTerm)
 			go rf.askVoteToAllPeer()
@@ -90,7 +90,7 @@ func (rf *Raft) askVoteToAllPeer() {
 // 这个仍然是leader，但是已经不起作用了，**不能真正的修改它的手下**（这句话很关键，此时你还是leader吗？）
 // 1. server的状态还是leader
 // 2. 但是已经不是majority的leader，可以发heartbeat（维持统治），但是无法持久化写进去（执行持久化） --- 这个逻辑怎么处理？
-//   2.1 每次发心跳，更新 followerCount，能收回来多少。那么在rpc里面检查？
+//   2.1 每次发心跳，更新 voteCount，能收回来多少。那么在rpc里面检查？
 //		2.1.1 没写进去follower
 //		2.1.2 写进去follower，但回来时的信号断了（这个可以由rpc(tcp)解决吧）
 // 3. 最终表现的结果是网络分区也能进行执行，只是那个小块被“废弃”了
@@ -98,7 +98,6 @@ func (rf *Raft) askVoteToAllPeer() {
 // func (rf *Raft) askHeartbeatToAllPeer(withEntries bool, data ...interface{}) bool {
 func (rf *Raft) askHeartbeatToAllPeer() {
 	log.Printf("[%v] askHeartbeatToAllPeer start\n", rf.me)
-	rf.followerCount = 0
 	for index, _ := range rf.peers {
 		if index == rf.me {
 			continue
@@ -112,28 +111,6 @@ func (rf *Raft) askHeartbeatToAllPeer() {
 	}
 }
 
-func (rf *Raft) askRequestVoteToSinglePeer(server int, args *RequestVoteArgs, reply *RequestVoteReply) {
-	ok := rf.sendRequestVote(server, args, reply)
-	if ok {
-		if reply.VoteGranted {
-			// TODO handle reply.Term ?
-			rf.mu.Lock()
-			rf.followerCount += 1
-			log.Printf("[%+v] askRequestVoteToSinglePeer success: %+v", rf.me, rf)
-			rf.mu.Unlock()
-		} else {
-			// TODO 拒绝一般是有原因的，会有哪些原因？很多...未来还会增加更多的原因
-			// TODO 小term，打回原型
-			if reply.Term > rf.currentTerm {
-				log.Printf("leader/candidate[%v]'s term[%v] is outdated, new term [%+v], back to follower. %+v", rf.me, rf.currentTerm, reply.Term, rf)
-				rf.backToFollower(reply.Term)
-			}
-		}
-	} else {
-		log.Printf("[%+v] askRequestVoteToSinglePeer failed, [%+v] partitioned.: %+v", rf.me, server, rf)
-	}
-}
-
 func (rf *Raft) askHeartbeatToSinglePeer(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	ok := rf.sendAppendEntries(server, args, reply)
 	if ok {
@@ -141,7 +118,7 @@ func (rf *Raft) askHeartbeatToSinglePeer(server int, args *AppendEntriesArgs, re
 			// TODO handle reply.Term ?
 			rf.mu.Lock()
 			log.Printf("[%+v] askHeartbeatToSinglePeer success: %+v", rf.me, rf)
-			rf.followerCount += 1
+			rf.voteCount += 1
 			rf.mu.Unlock()
 		} else {
 			// TODO 小term，打回原型
