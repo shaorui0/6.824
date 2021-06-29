@@ -74,6 +74,7 @@ type Raft struct {
 	receivedRequestVote   bool
 	receivedAppendEntries bool
 	chanGrantVote         chan bool
+	chanHeartbeat         chan bool
 
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
 	peers     []*labrpc.ClientEnd // RPC end points of all peers

@@ -76,11 +76,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 
-	// can vote
-	if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
+	// vote success
+	if rf.votedFor == -1 || rf.votedFor == CandidateId {
 		reply.VoteGranted = true
-		// vote success
-		rf.votedFor = args.CandidateId
+
+		rf.votedFor = CandidateId
 		rf.chanGrantVote <- true
 	}
 
@@ -93,58 +93,35 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // 心跳过来改变什么东西？然后会打断什么，然后重新开始睡眠（那个使用什么机制？）
 //
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	log.Printf("follower[%v] receive a rpc[AppendEntries] from [%+v], %+v", rf.me, args.LeaderId, rf)
 
 	// Your code here (2A, 2B).
 	leaderTerm := args.Term
 	leaderId := args.LeaderId
 
-	// reply
-	reply.Term = rf.currentTerm
-	reply.Success = false
+	if leaderTerm < rf.currentTerm {
+		// reject
+		reply.Term = rf.currentTerm
 
-	// 如果这不是我的 leader's heartbeat，我就
-	// 1. check term
-	// 	1.1 term 更大，认贼作父？更新term，后面my old leader 过来，我拒绝并把我的term发回去它就都明白了
-	//  1.2 term 更小，直接拒绝，并把term返回回去，它就什么都明白了
-	if rf.isNotCurrentLead(args.LeaderId) {
-		if leaderTerm >= rf.currentTerm {
-			if rf.serverStatus == LEADER {
-				if leaderTerm == rf.currentTerm {
-					panic("brain split!")
-				} else {
-					log.Printf("[incertitude!] current leader term outdated. back To Follower")
-					rf.backToFollower(leaderTerm) // candidate 收到 leader 的 heartbeat，停止选举
-				}
-			} else if rf.serverStatus == CANDIDATE {
-				log.Printf("[AppendEntries] current candidate term outdated. back To Follower")
-				rf.backToFollower(leaderTerm) // candidate 收到 leader 的 heartbeat，停止选举
-			} else {
-				log.Printf("[AppendEntries] my old leader [%+v] with term [%+v]; current rpc leader [%+v] with term [%+v]. %+v", rf.votedFor, rf.currentTerm, leaderId, leaderTerm, rf)
-			}
-			reply.Success = true
-			reply.Term = rf.currentTerm
-
-			updated := rf.updateCurrentServerStatus(leaderTerm, leaderId, "AppendEntries")
-			if !updated {
-				panic("yyy")
-			}
-		}
 		return
 	}
 
-	// check
-	isVaildTerm := rf.checkInputCandidateTerm(leaderTerm)
-
-	// reply
-	if isVaildTerm {
-		reply.Success = true
-
-		updated := rf.updateCurrentServerStatus(leaderTerm, leaderId, "AppendEntries")
-		if !updated {
-			panic("yyy")
-		}
+	if leaderTerm > rf.currentTerm {
+		// trans to follower
+		rf.serverStatus = FOLLOWER
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
 	}
+
+	// confirm heartbeat to refresh timeout
+	rf.chanHeartbeat <- true
+	reply.Term = rf.currentTerm
+
+	// TODO log
+	reply.Success = true
 
 	log.Printf("AppendEntries Rpc result: \n%+v\n%+v", *args, *reply)
 }
