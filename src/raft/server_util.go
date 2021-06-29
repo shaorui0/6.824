@@ -15,12 +15,12 @@ func (rf *Raft) backToFollower(newTerm int) {
 // 	rf.serverStatus = CANDIDATE
 // 	rf.currentTerm += 1
 // 	rf.voteMyself() // vote myself
-// 	log.Printf("[%v] upToCandidate. %+v\n", rf.me, rf)
+// 	log.Printf("[%v] upToCandidate. %v\n", rf.me, rf)
 // }
 
 func (rf *Raft) upToLeader() {
 	rf.serverStatus = LEADER
-	log.Printf("[%+v] upToLeader. %+v\n", rf.me, rf)
+	log.Printf("[%v] upToLeader. %+v\n", rf.me, rf)
 }
 
 //
@@ -31,6 +31,5 @@ func (rf *Raft) upToLeader() {
 func (rf *Raft) isLeader() bool {
 	return rf.dead == 0 &&
 		rf.serverStatus == LEADER &&
-		rf.votedFor == rf.me &&
-		rf.voteCount > len(rf.peers)/2
+		rf.votedFor == rf.me
 }
