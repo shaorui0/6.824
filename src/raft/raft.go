@@ -199,39 +199,61 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	if ok {
-		// 如果发送成功，处理reply
-		// 1. request 异常情况,term / status
-		if rf.serverStatus != CANDIDATE || rf.currentTerm != args.Term {
-			log.Printf("[%v] sendRequestVote request invilid\n", rf.me)
-			return ok
-		}
 
-		// 2. response invilid
-		if rf.currentTerm < reply.Term {
-			rf.serverStatus = FOLLOWER
-			rf.currentTerm = reply.Term
-			rf.votedFor = -1
-			log.Printf("[%v] sendRequestVote response invilid\n", rf.me)
-			return ok
-		}
+	if !ok || rf.serverStatus != CANDIDATE || rf.currentTerm != args.Term {
+		log.Printf("[%v] sendRequestVote request invilid\n", rf.me)
+		return ok
+	}
 
-		// 3. voted
-		if reply.VoteGranted {
-			rf.voteCount++
-			// upToLeader
-			if rf.voteCount > len(rf.peers)/2 {
-				rf.serverStatus = LEADER
-				rf.chanWinElect <- true
-				log.Printf("[%v] sendRequestVote, up to leader.", rf.me)
-			}
+	// 如果发送成功，处理reply
+	// 1. request 异常情况,term / status
+	if rf.serverStatus != CANDIDATE || rf.currentTerm != args.Term {
+		log.Printf("[%v] sendRequestVote request invilid\n", rf.me)
+		return ok
+	}
+
+	// 2. response invilid
+	if rf.currentTerm < reply.Term {
+		rf.serverStatus = FOLLOWER
+		rf.currentTerm = reply.Term
+		rf.votedFor = -1
+		log.Printf("[%v] sendRequestVote response invilid\n", rf.me)
+		return ok
+	}
+
+	// 3. voted
+	if reply.VoteGranted {
+		rf.voteCount++
+		// upToLeader
+		if rf.voteCount > len(rf.peers)/2 {
+			rf.serverStatus = LEADER
+			rf.chanWinElect <- true
+			log.Printf("[%v] sendRequestVote, up to leader.", rf.me)
 		}
 	}
+
 	return ok
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if !ok || rf.serverStatus != LEADER || rf.currentTerm != args.Term {
+		log.Printf("[%v] sendAppendEntries request invilid\n", rf.me)
+		return ok
+	}
+
+	if reply.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.currentTerm = reply.Term
+		rf.serverStatus = FOLLOWER
+		rf.votedFor = -1
+		return ok
+	}
+
+	// if reply.success
+	// else
 	return ok
 }
 

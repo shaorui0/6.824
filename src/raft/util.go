@@ -65,9 +65,6 @@ func (rf *Raft) RunServer() {
 	}
 }
 
-//
-// ask all of server except me
-//
 func (rf *Raft) askVoteToAllPeer() {
 	rf.mu.Lock()
 	log.Printf("[%v] askVoteToAllPeer start\n", rf.me)
@@ -84,50 +81,17 @@ func (rf *Raft) askVoteToAllPeer() {
 	log.Printf("[%v] askVoteToAllPeer end\n", rf.me)
 }
 
-//
-// ask all of server except me
-// 每次发headbeat都会发给所有人，然后统计结果，也许直接就不成立了，这时怎么办？其他server接不到heartbeat开始起义，
-// 这个仍然是leader，但是已经不起作用了，**不能真正的修改它的手下**（这句话很关键，此时你还是leader吗？）
-// 1. server的状态还是leader
-// 2. 但是已经不是majority的leader，可以发heartbeat（维持统治），但是无法持久化写进去（执行持久化） --- 这个逻辑怎么处理？
-//   2.1 每次发心跳，更新 voteCount，能收回来多少。那么在rpc里面检查？
-//		2.1.1 没写进去follower
-//		2.1.2 写进去follower，但回来时的信号断了（这个可以由rpc(tcp)解决吧）
-// 3. 最终表现的结果是网络分区也能进行执行，只是那个小块被“废弃”了
-//
-// func (rf *Raft) askHeartbeatToAllPeer(withEntries bool, data ...interface{}) bool {
 func (rf *Raft) askHeartbeatToAllPeer() {
+	rf.mu.Lock()
 	log.Printf("[%v] askHeartbeatToAllPeer start\n", rf.me)
-	for index, _ := range rf.peers {
-		if index == rf.me {
-			continue
+	rf.mu.Unlock()
+	for server := range rf.peers {
+		if server != rf.me && rf.serverStatus == LEADER {
+			args := &AppendEntriesArgs{}
+			args.Term = rf.currentTerm
+			args.LeaderId = rf.me
+			go rf.sendAppendEntries(server, args, &AppendEntriesReply{})
 		}
-
-		var args AppendEntriesArgs
-		args.Term = rf.currentTerm
-		args.LeaderId = rf.me
-		var reply AppendEntriesReply
-		go rf.askHeartbeatToSinglePeer(index, &args, &reply)
 	}
-}
-
-func (rf *Raft) askHeartbeatToSinglePeer(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	ok := rf.sendAppendEntries(server, args, reply)
-	if ok {
-		if reply.Success {
-			// TODO handle reply.Term ?
-			rf.mu.Lock()
-			log.Printf("[%+v] askHeartbeatToSinglePeer success: %+v", rf.me, rf)
-			rf.voteCount += 1
-			rf.mu.Unlock()
-		} else {
-			// TODO 小term，打回原型
-			if reply.Term > rf.currentTerm {
-				log.Printf("leader/candidate[%v]'s term[%v] is outdated, new term [%+v], back to follower. %+v", rf.me, rf.currentTerm, reply.Term, rf)
-				rf.backToFollower(reply.Term)
-			}
-		}
-	} else {
-		log.Printf("[%+v] askHeartbeatToSinglePeer failed, [%+v] partitioned.: %+v", rf.me, server, rf)
-	}
+	log.Printf("[%v] askHeartbeatToAllPeer end\n", rf.me)
 }

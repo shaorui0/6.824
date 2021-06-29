@@ -115,13 +115,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.votedFor = -1
 	}
 
-	// confirm heartbeat to refresh timeout
-	rf.chanHeartbeat <- true
 	reply.Term = rf.currentTerm
-
-	// TODO log
 	reply.Success = true
 
+	// confirm heartbeat to refresh timeout
+	rf.chanHeartbeat <- true
 	log.Printf("AppendEntries Rpc result: \n%+v\n%+v", *args, *reply)
 }
 
