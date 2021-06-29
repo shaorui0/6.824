@@ -30,7 +30,9 @@ func (rf *Raft) RunServer() {
 			case <-rf.chanHeartbeat:
 			case <-rf.chanGrantVote:
 			case <-time.After(time.Duration(rand.Int63()%333+550) * time.Millisecond):
+				// rf.mu.Lock()
 				rf.serverStatus = CANDIDATE
+				// rf.mu.Unlock()
 			}
 		case CANDIDATE:
 			rf.mu.Lock()
@@ -38,15 +40,17 @@ func (rf *Raft) RunServer() {
 			rf.votedFor = rf.me
 			rf.voteCount = 1 // vote itself
 			rf.mu.Unlock()
-			log.Printf("%v become CANDIDATE %v\n", rf.me, rf.currentTerm)
+			log.Printf("[%v] become CANDIDATE, currentTerm: %v\n", rf.me, rf.currentTerm)
 			go rf.askVoteToAllPeer()
 
 			//check
 			select {
 			case <-rf.chanHeartbeat:
-				log.Printf("CANDIDATE %v reveive chanHeartbeat\n", rf.me)
-				rf.serverStatus = FOLLOWER
-			case <-rf.chanWinElect: // 确认了可以成为leader
+				log.Printf("CANDIDATE %v reveive chanHeartbeat, currentTerm: %v\n", rf.me, rf.currentTerm)
+				rf.mu.Lock()
+				rf.backToFollower(rf.currentTerm)
+				rf.mu.Unlock()
+			case <-rf.chanWinElect:
 				rf.mu.Lock()
 				rf.upToLeader()
 				// TODO log
@@ -56,7 +60,7 @@ func (rf *Raft) RunServer() {
 			}
 		case LEADER:
 			go rf.askHeartbeatToAllPeer()
-			time.Sleep(time.Millisecond * 60)
+			time.Sleep(time.Millisecond * 190)
 		}
 	}
 }

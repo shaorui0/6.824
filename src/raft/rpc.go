@@ -49,7 +49,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	log.Printf("follower[%v] is received a rpc[RequestVote] from [%+v], %+v", rf.me, args.CandidateId, rf)
+	log.Printf("follower[%v] is received a rpc[RequestVote] from [%v], %v", rf.me, args.CandidateId, rf)
 
 	CandidateTerm := args.Term
 	CandidateId := args.CandidateId
@@ -65,7 +65,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	if CandidateTerm > rf.currentTerm {
-		rf.backToFollower(args.Term)
+		rf.backToFollower(CandidateTerm)
 	}
 
 	// reply init
@@ -80,19 +80,17 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.chanGrantVote <- true
 	}
 
-	log.Printf("RequestVote Rpc result: \n%+v\n%+v", *args, *reply)
+	log.Printf("RequestVote Rpc result: \n%+v\n%+v", args, reply)
 }
 
 //
-// example AppendEntries RPC handler.
-// 可能是心跳或写入
-// 心跳过来改变什么东西？然后会打断什么，然后重新开始睡眠（那个使用什么机制？）
+// AppendEntries RPC handler.
 //
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	log.Printf("follower[%v] receive a rpc[AppendEntries] from [%+v], %+v", rf.me, args.LeaderId, rf)
+	log.Printf("follower[%v] receive a rpc[AppendEntries] from [%v], %v", rf.me, args.LeaderId, rf)
 
 	// Your code here (2A, 2B).
 	leaderTerm := args.Term
@@ -113,11 +111,5 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// confirm heartbeat to refresh timeout
 	rf.chanHeartbeat <- true
-	log.Printf("AppendEntries Rpc result: \n%+v\n%+v", *args, *reply)
+	log.Printf("AppendEntries Rpc result: \n%+v\n%+v", args, reply)
 }
-
-// func (rf *Raft) sleepMicroSecond(ms int) {
-// 	// log.Printf("[%+v] start sleep %+v micro seconds", rf.me, ms)
-// 	time.Sleep(time.Duration(ms) * time.Millisecond)
-// 	// log.Printf("[%+v] end sleep", rf.me)
-// }

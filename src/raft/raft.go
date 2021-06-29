@@ -95,6 +95,8 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
+	// rf.mu.Lock() // TODO 读也加锁?
+	// defer rf.mu.Unlock()
 	term = rf.currentTerm
 	isleader = rf.isLeader()
 	return term, isleader
@@ -214,7 +216,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	// 3. voted
 	if reply.VoteGranted {
 		rf.voteCount++
-		// upToLeader
+
 		if rf.voteCount > len(rf.peers)/2 {
 			rf.chanWinElect <- true
 			log.Printf("[%v] sendRequestVote, up to leader.", rf.me)
