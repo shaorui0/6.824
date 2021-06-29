@@ -2,6 +2,8 @@ package raft
 
 import (
 	"log"
+	"math/rand"
+	"time"
 )
 
 // Debugging
@@ -21,67 +23,43 @@ func (rf *Raft) RunServer() {
 	log.Printf("RunServer...\nInit Status: %+v", rf)
 	for {
 		if rf.killed() {
-			log.Printf("[%v] was been killed\n", rf.me)
+			log.Printf("[%v] was been killed", rf.me)
 			break
 		}
 
-		log.Printf(">>> Current raft server[%+v]: %+v\n", rf.me, rf)
-
-		if rf.serverStatus == FOLLOWER {
-			// get rpc(vote, heartbeat) when I sleeped
-			// if rf.receivedRequestVote {
-			// 	rf.receivedRequestVote = false // reset
-			// 	continue
-			// }
-			// if rf.receivedAppendEntries {
-			// 	rf.receivedAppendEntries = false // reset
-			// 	continue
-			// }
-
-			rf.sleepMicroSecond(rf.voteTimeout)
-
-			// 睡一觉起来，发现处理过rpc，再睡一觉
-			if rf.receivedRequestVote {
-				rf.receivedRequestVote = false // reset
-				continue
+		// log.Printf(">>> Current raft server[%+v]: %+v", rf.me, rf)
+		switch rf.serverStatus {
+		case FOLLOWER:
+			select {
+			case <-rf.chanHeartbeat:
+			case <-rf.chanGrantVote:
+			case <-time.After(time.Duration(rand.Int63()%333+550) * time.Millisecond):
+				rf.serverStatus = CANDIDATE
 			}
-			if rf.receivedAppendEntries {
-				rf.receivedAppendEntries = false // reset
-				continue
+		case CANDIDATE:
+			rf.mu.Lock()
+			rf.currentTerm++
+			rf.votedFor = rf.me
+			rf.followerCount = 1
+			rf.mu.Unlock()
+			log.Printf("%v become CANDIDATE %v\n", rf.me, rf.currentTerm)
+			go rf.askVoteToAllPeer()
+			//check
+			select {
+			case <-rf.chanHeartbeat:
+				log.Printf("CANDIDATE %v reveive chanHeartbeat\n", rf.me)
+				rf.serverStatus = FOLLOWER
+			case <-rf.chanGrantVote: // 确认了可以成为leader
+				rf.mu.Lock()
+				rf.serverStatus = LEADER
+				// TODO log
+				rf.mu.Unlock()
+			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
+
 			}
-
-			rf.upToCandidate() // try to be candidate
-
-		} else if rf.serverStatus == CANDIDATE {
-			rf.askVoteToAllPeer() // 默认rpc很快
-
-			rf.sleepMicroSecond(rf.voteTimeout)
-
-			// check rpc's result: majority
-			if rf.checkFollowerCount() && rf.votedFor == rf.me {
-				log.Printf("[%v] askVoteToAllPeer success, server: %+v\n", rf.me, rf)
-				rf.upToLeader()
-			} else {
-				// reset election
-				rf.upToCandidate()
-				rf.voteTimeout = rf.generateNewTimeout("RequestVote")
-				log.Printf("[%v] askVoteToAllPeer failed, new election. server: %+v\n", rf.me, rf)
-			}
-		} else if rf.serverStatus == LEADER {
-			// 理论上，leader 永远是 leader，应该是稳定状态了，有什么可能降级吗？网络分区了被降级(本质是 term 过期了)
-			// 如果接到了client的请求，就发出heartbeat，
-			rf.askHeartbeatToAllPeer()
-
-			rf.sleepMicroSecond(HEARTBEAT)
-
-			if rf.checkFollowerCount() && rf.votedFor == rf.me {
-				log.Printf("[%v] askHeartbeatToAllPeer success, server: %+v\n", rf.me, rf)
-			} else {
-				log.Printf("[%v] askHeartbeatToAllPeer failed, server: %+v\n", rf.me, rf)
-				// ...心跳失败继续心跳
-			}
-
-			// TODO send append log rpc in the future
+		case LEADER:
+			go rf.askHeartbeatToAllPeer()
+			time.Sleep(time.Millisecond * 60)
 		}
 	}
 }

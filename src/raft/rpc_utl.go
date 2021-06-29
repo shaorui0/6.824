@@ -100,7 +100,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// Your code here (2A, 2B).
 	leaderTerm := args.Term
-	leaderId := args.LeaderId
 
 	if leaderTerm < rf.currentTerm {
 		// reject
