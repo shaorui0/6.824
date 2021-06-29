@@ -2,7 +2,6 @@ package raft
 
 import (
 	"log"
-	"time"
 )
 
 //
@@ -66,10 +65,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	if CandidateTerm > rf.currentTerm {
-		// trans to follower
-		rf.serverStatus = FOLLOWER
-		rf.votedFor = -1
-		rf.currentTerm = args.Term
+		rf.backToFollower(args.Term)
 	}
 
 	// reply init
@@ -109,10 +105,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	if leaderTerm > rf.currentTerm {
-		// trans to follower
-		rf.serverStatus = FOLLOWER
-		rf.currentTerm = args.Term
-		rf.votedFor = -1
+		rf.backToFollower(args.Term)
 	}
 
 	reply.Term = rf.currentTerm
@@ -123,64 +116,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	log.Printf("AppendEntries Rpc result: \n%+v\n%+v", *args, *reply)
 }
 
-//
-// update server's status when success
-//
-func (rf *Raft) updateCurrentServerStatus(newTerm int, newVotedFor int, rpcType string) bool {
-	if rpcType == "RequestVote" {
-		rf.receivedRequestVote = true
-	} else if rpcType == "AppendEntries" {
-		rf.receivedAppendEntries = true
-	} else {
-		return false
-	}
-
-	if newTerm != rf.currentTerm {
-		log.Printf("[%+v] changed currentTerm from [%+v] to [%+v]", rf.me, rf.currentTerm, newTerm)
-	}
-	rf.currentTerm = newTerm
-
-	if newVotedFor != rf.votedFor {
-		log.Printf("[%+v] changed votedFor from [%+v] to [%+v]", rf.me, rf.votedFor, newVotedFor)
-	}
-	rf.votedFor = newVotedFor
-	return true
-}
-
-//
-// check this server's term
-// 过来的term必须比我的大，我才能接收
-//
-func (rf *Raft) checkInputCandidateTerm(term int) bool {
-	if term < rf.currentTerm {
-		return false
-	}
-
-	if (rf.serverStatus == LEADER || rf.serverStatus == CANDIDATE) && term > rf.currentTerm {
-		log.Printf("leader/candidate[%v]'s term[%v] is outdated, back to follower. %+v", rf.me, rf.currentTerm, rf)
-		rf.backToFollower(term)
-	}
-
-	return true
-}
-
-//
-// votedFor
-// lastLogTerm > , true
-// lastLogTerm == ,  check lastLogIndex, true
-//
-func (rf *Raft) checkValidCandidateId(candidateId int, term int) bool {
-	// 1. check
-	if rf.isNotCurrentLead(candidateId) {
-		return false
-	}
-	// TODO 1.2 rf.lastLogTerm
-
-	return true
-}
-
-func (rf *Raft) sleepMicroSecond(ms int) {
-	// log.Printf("[%+v] start sleep %+v micro seconds", rf.me, ms)
-	time.Sleep(time.Duration(ms) * time.Millisecond)
-	// log.Printf("[%+v] end sleep", rf.me)
-}
+// func (rf *Raft) sleepMicroSecond(ms int) {
+// 	// log.Printf("[%+v] start sleep %+v micro seconds", rf.me, ms)
+// 	time.Sleep(time.Duration(ms) * time.Millisecond)
+// 	// log.Printf("[%+v] end sleep", rf.me)
+// }

@@ -16,9 +16,6 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-//
-// 这个函数主要就是改变一下持久化状态，具体的处理一般在rpc里面就处理了
-//
 func (rf *Raft) RunServer() {
 	log.Printf("RunServer...\nInit Status: %+v", rf)
 	for {
@@ -27,7 +24,6 @@ func (rf *Raft) RunServer() {
 			break
 		}
 
-		// log.Printf(">>> Current raft server[%+v]: %+v", rf.me, rf)
 		switch rf.serverStatus {
 		case FOLLOWER:
 			select {
@@ -52,7 +48,7 @@ func (rf *Raft) RunServer() {
 				rf.serverStatus = FOLLOWER
 			case <-rf.chanWinElect: // 确认了可以成为leader
 				rf.mu.Lock()
-				rf.serverStatus = LEADER
+				rf.upToLeader()
 				// TODO log
 				rf.mu.Unlock()
 			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):

@@ -67,14 +67,6 @@ type Raft struct {
 	// state a Raft server must maintain.
 	logs []*Entry
 
-	// timeout(ms)
-	voteTimeout      int
-	heartbeatTimeout int
-
-	// receive a rpc request
-	receivedRequestVote   bool
-	receivedAppendEntries bool
-
 	chanGrantVote chan bool
 	chanHeartbeat chan bool
 	chanWinElect  chan bool
@@ -214,9 +206,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 
 	// 2. response invilid
 	if rf.currentTerm < reply.Term {
-		rf.serverStatus = FOLLOWER
-		rf.currentTerm = reply.Term
-		rf.votedFor = -1
+		rf.backToFollower(reply.Term)
 		log.Printf("[%v] sendRequestVote response invilid\n", rf.me)
 		return ok
 	}
@@ -226,7 +216,6 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 		rf.voteCount++
 		// upToLeader
 		if rf.voteCount > len(rf.peers)/2 {
-			rf.serverStatus = LEADER
 			rf.chanWinElect <- true
 			log.Printf("[%v] sendRequestVote, up to leader.", rf.me)
 		}
@@ -245,10 +234,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	}
 
 	if reply.Term > rf.currentTerm {
-		// become follower and update current term
-		rf.currentTerm = reply.Term
-		rf.serverStatus = FOLLOWER
-		rf.votedFor = -1
+		rf.backToFollower(reply.Term)
 		return ok
 	}
 
@@ -343,9 +329,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.chanGrantVote = make(chan bool, 100)
 	rf.chanHeartbeat = make(chan bool, 100)
 	rf.chanWinElect = make(chan bool, 100)
-
-	rf.generateNewTimeout("RequestVote")
-	rf.generateNewTimeout("AppendEntries")
 
 	go rf.RunServer()
 
