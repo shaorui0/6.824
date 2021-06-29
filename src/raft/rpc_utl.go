@@ -47,6 +47,9 @@ type AppendEntriesReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	log.Printf("follower[%v] is received a rpc[RequestVote] from [%+v], %+v", rf.me, args.CandidateId, rf)
 
 	CandidateTerm := args.Term
@@ -55,48 +58,30 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// candidateLastLogTerm :=
 
 	//reply
-	reply.VoteGranted = false
-	reply.Term = rf.currentTerm
-
-	if rf.isNotCurrentLead(args.CandidateId) {
-		// TODO 进来这里都没有进行处理了，错误逻辑还是在这里。有没有一个checklist？
-		if CandidateTerm > rf.currentTerm { // TODO check 下面是 >= (at least as large as), 这里是 >
-			reply.VoteGranted = true
-			reply.Term = CandidateTerm
-
-			if rf.serverStatus == LEADER {
-				log.Printf("[%+v] [incertitude!] current leader term outdated. back To Follower", rf.me)
-				// TODO check, 需要更新voteFor吗？update vote??? 需要更换投票吗？如果一个少部分的leader持续不起作用，持续没有majority会发生什么事？看论文...
-				rf.backToFollower(CandidateTerm) // candidate 收到 leader 的 heartbeat，停止选举
-			} else if rf.serverStatus == CANDIDATE {
-				log.Printf("[%+v] [RequestVote] current candidate term outdated. back To Follower", rf.me)
-				rf.backToFollower(CandidateTerm) // candidate 收到 leader 的 heartbeat，停止选举
-			} else {
-				log.Printf("[%+v] [RequestVote] my old leader [%+v] with term [%+v]; current rpc leader [%+v] with term [%+v]. %+v", rf.me, rf.votedFor, rf.currentTerm, CandidateId, CandidateTerm, rf)
-			}
-
-			updated := rf.updateCurrentServerStatus(CandidateTerm, CandidateId, "RequestVote")
-			if !updated {
-				panic("yyy")
-			}
-			// TODO
-		}
+	if CandidateTerm < rf.currentTerm {
+		// reject
+		reply.Term = rf.currentTerm
+		reply.VoteGranted = false
 		return
 	}
 
-	// check
-	isVaildTerm := rf.checkInputCandidateTerm(CandidateTerm)
-	isVaildCandidate := rf.checkValidCandidateId(CandidateId, CandidateTerm)
+	if CandidateTerm > rf.currentTerm {
+		// trans to follower
+		rf.serverStatus = FOLLOWER
+		rf.votedFor = -1
+		rf.currentTerm = args.Term
+	}
 
+	// reply init
+	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
-	reply.Term = rf.currentTerm // currentTerm may bigger than candidate's term
-	if isVaildTerm && isVaildCandidate {
-		reply.VoteGranted = true
 
-		updated := rf.updateCurrentServerStatus(CandidateTerm, CandidateId, "RequestVote")
-		if !updated {
-			panic("yyy")
-		}
+	// can vote
+	if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
+		reply.VoteGranted = true
+		// vote success
+		rf.votedFor = args.CandidateId
+		rf.chanGrantVote <- true
 	}
 
 	log.Printf("RequestVote Rpc result: \n%+v\n%+v", *args, *reply)

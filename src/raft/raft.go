@@ -58,6 +58,9 @@ type Raft struct {
 	currentTerm  int
 	dead         int32 // set by Kill()
 
+	// leader
+	followerCount int
+
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
@@ -70,9 +73,7 @@ type Raft struct {
 	// receive a rpc request
 	receivedRequestVote   bool
 	receivedAppendEntries bool
-
-	// leader
-	followerCount int
+	chanGrantVote         chan bool
 
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
@@ -276,8 +277,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// init
 	rf.votedFor = -1
-	rf.voteTimeout = rf.generateNewTimeout("RequestVote")
-	rf.heartbeatTimeout = rf.generateNewTimeout("AppendEntries")
+	rf.generateNewTimeout("RequestVote")
+	rf.generateNewTimeout("AppendEntries")
 	go rf.RunServer()
 
 	// initialize from state persisted before a crash // shaorui: checkpoint
