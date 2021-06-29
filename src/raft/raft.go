@@ -73,8 +73,10 @@ type Raft struct {
 	// receive a rpc request
 	receivedRequestVote   bool
 	receivedAppendEntries bool
-	chanGrantVote         chan bool
-	chanHeartbeat         chan bool
+
+	chanGrantVote chan bool
+	chanHeartbeat chan bool
+	chanWinElect  chan bool
 
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
@@ -85,6 +87,13 @@ type Entry struct {
 	Term         int
 	EntryCommand string
 }
+
+const (
+	FOLLOWER int = iota
+	CANDIDATE
+	LEADER
+)
+const HEARTBEAT = 156 // time(ms)
 
 // return currentTerm and whether this server
 // believes it is the leader.
@@ -278,8 +287,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// init
 	rf.votedFor = -1
+	rf.chanGrantVote = make(chan bool, 100)
+	rf.chanHeartbeat = make(chan bool, 100)
+	rf.chanWinElect = make(chan bool, 100)
+
 	rf.generateNewTimeout("RequestVote")
 	rf.generateNewTimeout("AppendEntries")
+
 	go rf.RunServer()
 
 	// initialize from state persisted before a crash // shaorui: checkpoint

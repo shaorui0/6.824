@@ -44,12 +44,13 @@ func (rf *Raft) RunServer() {
 			rf.mu.Unlock()
 			log.Printf("%v become CANDIDATE %v\n", rf.me, rf.currentTerm)
 			go rf.askVoteToAllPeer()
+
 			//check
 			select {
 			case <-rf.chanHeartbeat:
 				log.Printf("CANDIDATE %v reveive chanHeartbeat\n", rf.me)
 				rf.serverStatus = FOLLOWER
-			case <-rf.chanGrantVote: // 确认了可以成为leader
+			case <-rf.chanWinElect: // 确认了可以成为leader
 				rf.mu.Lock()
 				rf.serverStatus = LEADER
 				// TODO log
@@ -68,18 +69,17 @@ func (rf *Raft) RunServer() {
 // ask all of server except me
 //
 func (rf *Raft) askVoteToAllPeer() {
+	rf.mu.Lock()
 	log.Printf("[%v] askVoteToAllPeer start\n", rf.me)
-	rf.followerCount = 0
-	for index, _ := range rf.peers {
-		if index == rf.me {
-			continue
-		}
+	var args RequestVoteArgs
+	args.Term = rf.currentTerm
+	args.CandidateId = rf.me
+	rf.mu.Unlock()
 
-		var args RequestVoteArgs
-		args.Term = rf.currentTerm
-		args.CandidateId = rf.me
-		var reply RequestVoteReply
-		go rf.askRequestVoteToSinglePeer(index, &args, &reply)
+	for server := range rf.peers {
+		if server != rf.me && rf.serverStatus == CANDIDATE {
+			go rf.sendRequestVote(server, &args, &RequestVoteReply{})
+		}
 	}
 	log.Printf("[%v] askVoteToAllPeer end\n", rf.me)
 }
